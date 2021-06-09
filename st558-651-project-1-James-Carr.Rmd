@@ -1,0 +1,11 @@
+---
+title: "ST558-651 Project 1"
+output: 
+  github_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
