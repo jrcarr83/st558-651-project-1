@@ -7,5 +7,129 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(jsonlite)
+library(tidyverse)
 ```
+
+
+
+```{r set_base, echo=FALSE}
+base_records <- 'https://records.nhl.com/site/api'
+base_stats <- 'https://statsapi.web.nhl.com/api/v1/'
+```
+
+```{r get_teams, echo=FALSE}
+url <- paste0(base_records, '/franchise')
+teams <- tibble(jsonlite::fromJSON(url, flatten=TRUE)$data)
+```
+
+```{r get_team_id, echo=FALSE}
+get_valid_id <- function(id) {
+  if (is.null(id)) {
+    return (NULL)
+  }
+  #check that the id provided is legit
+  if (is.numeric(id) & !(id %in% teams$mostRecentTeamId)) {
+    print('ID provided is not a valid team ID')
+    return (NULL)
+  }
+  
+  #check that abbreviation provided is legit
+  if (!is.numeric(id) & !(id %in% teams$teamAbbrev)) {
+    print('Team abbrevation provided is not a valid team name')
+    return (NULL)
+  } else if (!is.numeric(id)) {
+    id <- teams$id[which(teams$teamAbbrev == id)]
+  }
+  
+  return (id)
+}
+
+```
+
+
+
+```{r record_functions, echo=FALSE}
+get_franchises <- function(){
+  url <- paste0(base_records, '/franchise')
+  tibble(jsonlite::fromJSON(url, flatten=TRUE)$data)
+}
+
+get_franchise_team_totals <- function(){
+  url <- paste0(base_records, '/franchise-team-totals')
+  tibble(jsonlite::fromJSON(url, flatten=TRUE)$data)
+}
+
+get_franchise_team_totals <- function(id){
+  
+  id <- get_valid_id(id)
+  #if id returns as null then the value passed was incorrect
+  if (is.null(id)) {
+    return(NULL)
+  }
+  
+  url <- paste0(base_records,
+          '/franchise-season-records?cayenneExp=franchiseId=',
+          id)
+  return (tibble(jsonlite::fromJSON(url, flatten=TRUE)$data))
+}
+
+
+get_franchise_goalie_records <- function(id) {
+  id <- get_valid_id(id)
+  #if id returns as null then the value passed was incorrect
+  if (is.null(id)) {
+    return(NULL)
+  }
+  url <- paste0(base_records,
+          '/franchise-goalie-records?cayenneExp=franchiseId=',
+          id)
+  return (tibble(jsonlite::fromJSON(url, flatten=TRUE)$data))
+}
+
+get_franchise_skater_records <- function(id) {
+  id <- get_valid_id(id)
+  #if id returns as null then the value passed was incorrect
+  if (is.null(id)) {
+    return(NULL)
+  }
+  url <- paste0(base_records,
+          '/franchise-skater-records?cayenneExp=franchiseId=',
+          id)
+  return (tibble(jsonlite::fromJSON(url, flatten=TRUE)$data))
+}
+
+get_franchise_details <- function(id) {
+  id <- get_valid_id(id)
+  #if id returns as null then the value passed was incorrect
+  if (is.null(id)) {
+    return(NULL)
+  }
+  url <- paste0(base_records,
+          '/franchise-detail?cayenneExp=mostRecentTeamId=',
+          id)
+  return (tibble(jsonlite::fromJSON(url, flatten=TRUE)$data))
+}
+
+```
+
+```{r stat_function, echo=FALSE}
+get_team_stats <- function(id) {
+  url <- paste0(base_stats, 'teams/')
+  #if id is null, it will return null
+  #if id is bad, it will return null
+  id <- get_valid_id(id)
+  
+  #if id is not null, put it in the url
+  if (!is.null(id)) {
+    url <- paste0(url,'/', id, '/')
+  }
+  
+  url <- paste0(url, '?expand=team.stats')
+  return (tibble(jsonlite::fromJSON(url, flatten=TRUE)$teams))
+}
+
+```
+
+
 
