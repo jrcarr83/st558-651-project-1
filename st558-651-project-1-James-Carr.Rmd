@@ -13,18 +13,20 @@ library(tidyverse)
 library(plotly)
 ```
 
-
-
+## Set Up Data Scrape
+### Base links
 ```{r set_base, echo=FALSE}
 base_records <- 'https://records.nhl.com/site/api'
 base_stats <- 'https://statsapi.web.nhl.com/api/v1/'
 ```
 
+### Get List of Teams
 ```{r get_teams, echo=FALSE}
 url <- paste0(base_records, '/franchise')
 teams <- tibble(jsonlite::fromJSON(url, flatten=TRUE)$data)
 ```
 
+### Check Team ID
 ```{r get_team_id, echo=FALSE}
 get_valid_id <- function(id) {
   if (is.null(id)) {
@@ -49,7 +51,8 @@ get_valid_id <- function(id) {
 
 ```
 
-
+## Functions
+### Record Functions
 ```{r record_functions, echo=FALSE}
 get_franchises <- function(){
   url <- paste0(base_records, '/franchise')
@@ -116,6 +119,7 @@ get_franchise_details <- function(id) {
 
 ```
 
+### Stat Functions
 ```{r stat_function, echo=FALSE}
 get_team_stats <- function(id=NULL) {
   url <- paste0(base_stats, 'teams/')
@@ -134,7 +138,7 @@ get_team_stats <- function(id=NULL) {
 
 ```
 
-
+### Wrapper Function
 ```{r wrapper, echo=FALSE}
 
 get_nhl_data <- function(stat_type, id=NULL) {
@@ -158,8 +162,9 @@ get_nhl_data <- function(stat_type, id=NULL) {
 
 ```
 
-
-```{r summarizing}
+## Summarizing
+### Playoffs by Total Games Played
+```{r summarizing_playoffs}
 #let's look at all franchises via franchise totals
 data <- get_nhl_data('Franchise Totals')
 
@@ -178,9 +183,21 @@ franchises <- data %>% filter(activeFranchise == 1) %>%
 franchises$win_pct_playoff <- franchises$wins_playoff / 
                         (franchises$wins_playoff + franchises$losses_playoff)
 
-p <- ggplot(data=franchises, aes(x=gamesPlayed_regular, y=win_pct_playoff)) +
+g <- ggplot(data=franchises, aes(x=gamesPlayed_regular, y=win_pct_playoff)) +
       geom_point(aes(name=teamName))
 
-ggplotly(p)
+p <- ggplotly(g)
 ```
+```{r include, echo = FALSE}
+htmlwidgets::saveWidget(p, "index.html")
 
+htmltools::tags$iframe(
+  src=file.path(getwd(), "index.html"),
+  width="100%",
+  height="600",
+  scrolling="no",
+  seamless="seamless",
+  frameBorder="0"
+)
+
+```
