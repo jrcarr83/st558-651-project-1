@@ -33,7 +33,7 @@ get_valid_id <- function(id) {
     return (NULL)
   }
   #check that the id provided is legit
-  if (is.numeric(id) & !(id %in% teams$mostRecentTeamId)) {
+  if (is.numeric(id) & !(id %in% teams$id)) {
     print('ID provided is not a valid team ID')
     return (NULL)
   }
@@ -47,6 +47,16 @@ get_valid_id <- function(id) {
   }
   
   return (id)
+}
+
+#This function takes in the franchise ID and converts it 
+#to the most recent team ID
+convert_to_recentId <- function(id) {
+  #at this point we have gone through the valid ID funciton 
+  #so this should be passed a valid franchise ID
+  #return the most recent team ID
+  return(teams$mostRecentTeamId[which(teams$id == id)])
+  
 }
 
 ```
@@ -111,10 +121,13 @@ get_franchise_details <- function(id) {
     print('ID provided was not a valid team ID')
     return(NULL)
   }
+  #change franchise id to mostRecentTeamId
+  id <- convert_to_recentId(id)
+  
   url <- paste0(base_records,
           '/franchise-detail?cayenneExp=mostRecentTeamId=',
           id)
-  return (tibble(jsonlite::fromJSON(url, flatten=TRUE)$data))
+  return (tibble(jsonlite::fromJSON(url)$data))
 }
 
 ```
@@ -133,7 +146,8 @@ get_team_stats <- function(id=NULL) {
   }
   
   url <- paste0(url, '?expand=team.stats')
-  return (tibble(jsonlite::fromJSON(url, flatten=TRUE)$teams))
+  return (tibble(jsonlite::fromJSON(url, flatten=TRUE)$teams) %>%
+            unnest(teamStats) %>% unnest(splits))
 }
 
 ```
@@ -162,42 +176,81 @@ get_nhl_data <- function(stat_type, id=NULL) {
 
 ```
 
+### Misc Functions
+The 'First Year' variable is two numeric years appended together. This function strips out the first season year and returns it. The function must be supplied with a numeric vector of years from the NHL data.
+```{r extract_year}
+extract_year <- function(data) {
+  #confirm numeric vector
+  if (!(is.vector(data) & is.numeric(data))) {
+    print('You must provide a numeric vector of years')
+    return (NULL)
+  }
+  
+  convert <- tryCatch(
+           strtoi(substr(data, 1, 4), 0L),
+           error = function(e)
+           print("You must pass a numeric vector of years"))
+}
+```
+
+
 ## Summarizing
-### Playoffs by Total Games Played
+### Playoff Win % by Team Age
 ```{r summarizing_playoffs}
 #let's look at all franchises via franchise totals
 data <- get_nhl_data('Franchise Totals')
+data$first_season <- extract_year(data$firstSeasonId)
+data$team_age <- 2021 - data$first_season
 
 #let's look at active franchises first
 #and pivot wider so that playoffs and reg season 
 #are on the same line of data
-franchises <- data %>% filter(activeFranchise == 1) %>%
+franchises <- data %>%
+                filter(activeFranchise == 1, gamesPlayed > 50, ) %>%
                 mutate(game_type = if_else(gameTypeId == 2, 
                                            'regular', 'playoff')) %>%
                 select(franchiseId, teamName, gamesPlayed, 
-                       wins, losses, game_type) %>%
+                       wins, losses, game_type, first_season, team_age) %>%
                 pivot_wider(names_from = game_type, values_from = 
-                              c(gamesPlayed, wins, losses))
+                              c(gamesPlayed, wins, losses)) %>%
+                drop_na()
 
 
 franchises$win_pct_playoff <- franchises$wins_playoff / 
                         (franchises$wins_playoff + franchises$losses_playoff)
+franchises$win_pct_regular <- franchises$wins_regular / 
+                        (franchises$wins_regular + franchises$losses_regular)
 
-g <- ggplot(data=franchises, aes(x=gamesPlayed_regular, y=win_pct_playoff)) +
-      geom_point(aes(name=teamName))
+g <- ggplot(data=franchises, aes(x=team_age, y=win_pct_playoff)) +
+      geom_point() + 
+      xlab('Age of Team') + ylab('Playoff Win %')
+g
 
-p <- ggplotly(g)
-```
-```{r include, echo = FALSE}
-htmlwidgets::saveWidget(p, "index.html")
-
-htmltools::tags$iframe(
-  src=file.path(getwd(), "index.html"),
-  width="100%",
-  height="600",
-  scrolling="no",
-  seamless="seamless",
-  frameBorder="0"
-)
 
 ```
+
+### Regular Season % and Playoff %
+```{r clutch_teams}
+playoff_quantiles <- quantile(franchises$win_pct_playoff, 
+                               c(0.25, 0.75), na.rm=TRUE)
+regular_quantiles <- quantile(franchises$win_pct_regular,
+                              c(0.25, 0.75, na.rm=TRUE))
+franchises <- franchises %>% 
+              mutate(playoff_clutch = 
+                      if_else(win_pct_playoff <= playoff_quantiles[1],
+                              '1. Below Average',
+                      if_else(win_pct_playoff > playoff_quantiles[1] &
+                              win_pct_playoff < playoff_quantiles[2],
+                              '2. Average',
+                              '3. Clutch')))
+
+ggplot(data=franchises, aes(x=teamName, y=win_pct_regular)) +
+  geom_col(aes(fill=playoff_clutch)) +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
+  geom_hline(aes(yintercept = regular_quantiles[1])) +
+  geom_hline(aes(yintercept = regular_quantiles[2])) +
+  xlab('') + ylab('Regular Season Win %')
+
+```
+
+
