@@ -15,19 +15,22 @@ library(plotly)
 
 ## Set Up Data Scrape
 ### Base links
-```{r set_base, echo=FALSE}
+These are the base links to the two main APIs.
+```{r set_base}
 base_records <- 'https://records.nhl.com/site/api'
 base_stats <- 'https://statsapi.web.nhl.com/api/v1/'
 ```
 
 ### Get List of Teams
-```{r get_teams, echo=FALSE}
+Grabs the list of teams from the Records API.
+```{r get_teams}
 url <- paste0(base_records, '/franchise')
 teams <- tibble(jsonlite::fromJSON(url, flatten=TRUE)$data)
 ```
 
 ### Check Team ID
-```{r get_team_id, echo=FALSE}
+Here we check the team ID to verify it is valid and also convert names to the ID. Also, we provide the ability to convert the franchise ID over to the most recent team ID.
+```{r get_team_id}
 get_valid_id <- function(id) {
   if (is.null(id)) {
     return (NULL)
@@ -56,14 +59,21 @@ convert_to_recentId <- function(id) {
   #so this should be passed a valid franchise ID
   #return the most recent team ID
   return(teams$mostRecentTeamId[which(teams$id == id)])
-  
 }
 
 ```
 
 ## Functions
 ### Record Functions
-```{r record_functions, echo=FALSE}
+This chunk of code creates all of the functions to query the records API. There is a function for: 
+*  Getting the franchises 
+*  Getting the totals for each team 
+*  Getting season records for each team 
+*  Goalie Data 
+*  Skater data 
+*  Franchise details 
+
+```{r record_functions}
 get_franchises <- function(){
   url <- paste0(base_records, '/franchise')
   tibble(jsonlite::fromJSON(url, flatten=TRUE)$data)
@@ -133,7 +143,8 @@ get_franchise_details <- function(id) {
 ```
 
 ### Stat Functions
-```{r stat_function, echo=FALSE}
+There is one function in this chunk of code that queries the stats API for team stats.
+```{r stat_function}
 get_team_stats <- function(id=NULL) {
   url <- paste0(base_stats, 'teams/')
   #if id is null, it will return null
@@ -153,7 +164,8 @@ get_team_stats <- function(id=NULL) {
 ```
 
 ### Wrapper Function
-```{r wrapper, echo=FALSE}
+This wrapper function allows the user to query any of the functions through this one function and returns a tibble of the data. The only requirement is for the user to pass the stat type and an ID if necessary for that particular API call.
+```{r wrapper}
 
 get_nhl_data <- function(stat_type, id=NULL) {
   if (stat_type == 'Franchises') {
@@ -196,6 +208,7 @@ extract_year <- function(data) {
 
 ## Summarizing
 ### Playoff Win % by Team Age
+Here we are looking at the age of the team vs their playoff win percentage. 
 ```{r summarizing_playoffs}
 #let's look at all franchises via franchise totals
 data <- get_nhl_data('Franchise Totals')
@@ -230,6 +243,7 @@ g
 ```
 
 ### Regular Season % and Playoff %
+This chunk compares team's regular season win percentages to their playoff percentages. There are quantiles provided for the regular season percentage, and the playoff win percentage was grouped into three categories. 
 ```{r clutch_teams}
 playoff_quantiles <- quantile(franchises$win_pct_playoff, 
                                c(0.25, 0.75), na.rm=TRUE)
