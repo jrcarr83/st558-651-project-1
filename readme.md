@@ -83,6 +83,10 @@ API. There is a function for: \* Getting the franchises \* Getting the
 totals for each team \* Getting season records for each team \* Goalie
 Data \* Skater data \* Franchise details
 
+**Of note, the franchise details function currently returns only one
+line per franchise because many of the columns contain html formatted
+lists that I have not yet solved for.**
+
 ``` r
 get_franchises <- function(){
   url <- paste0(base_records, '/franchise')
@@ -131,20 +135,18 @@ get_franchise_skater_records <- function(id) {
   return (tibble(jsonlite::fromJSON(url, flatten=TRUE)$data))
 }
 
-get_franchise_details <- function(id) {
+get_franchise_details <- function(id=NULL) {
   id <- get_valid_id(id)
-  #if id returns as null then the value passed was incorrect
-  if (is.null(id)) {
-    print('ID provided was not a valid team ID')
-    return(NULL)
-  }
-  #change franchise id to mostRecentTeamId
-  id <- convert_to_recentId(id)
   
-  url <- paste0(base_records,
-          '/franchise-detail?cayenneExp=mostRecentTeamId=',
-          id)
-  return (tibble(jsonlite::fromJSON(url)$data))
+  url <- paste0(base_records, '/franchise-detail')
+  if (!is.null(id)) {
+    #change franchise id to mostRecentTeamId
+    id <- convert_to_recentId(id)
+    url <- paste0(url, '?cayenneExp=mostRecentTeamId=', id)
+  }
+  
+  temp <- tibble(jsonlite::fromJSON(url)$data)
+  return (temp)
 }
 ```
 
