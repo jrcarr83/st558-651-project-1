@@ -11,6 +11,9 @@ knitr::opts_chunk$set(echo = TRUE)
 library(jsonlite)
 library(tidyverse)
 library(plotly)
+library(DT)
+library(gridExtra)
+library(knitr)
 ```
 
 ## Set Up Data Scrape
@@ -102,25 +105,22 @@ get_franchise_season_records <- function(id){
 get_franchise_goalie_records <- function(id) {
   id <- get_valid_id(id)
   #if id returns as null then the value passed was incorrect
-  if (is.null(id)) {
-    return(NULL)
+  url <- paste0(base_records, '/franchise-goalie-records')
+  if (!is.null(id)) {
+    url <- paste0(url, '?cayenneExp=franchiseId=', id)
   }
-  url <- paste0(base_records,
-          '/franchise-goalie-records?cayenneExp=franchiseId=',
-          id)
+  
   return (tibble(jsonlite::fromJSON(url, flatten=TRUE)$data))
 }
 
 get_franchise_skater_records <- function(id) {
   id <- get_valid_id(id)
   #if id returns as null then the value passed was incorrect
-  if (is.null(id)) {
-    print('ID provided was not a valid team ID')
-    return(NULL)
+  url <- paste0(base_records, '/franchise-skater-records')
+  if (!is.null(id)) {
+    url <- paste0(url, '?cayenneExp=franchiseId=', id)
   }
-  url <- paste0(base_records,
-          '/franchise-skater-records?cayenneExp=franchiseId=',
-          id)
+  
   return (tibble(jsonlite::fromJSON(url, flatten=TRUE)$data))
 }
 
@@ -157,9 +157,19 @@ get_team_stats <- function(id=NULL) {
   }
   
   url <- paste0(url, '?expand=team.stats')
-  return (tibble(jsonlite::fromJSON(url, flatten=TRUE)$teams) %>%
-            unnest(teamStats) %>% unnest(splits))
+  
+  #the stat columns all return as character. convert them to numeric
+  all_stats <- tibble(jsonlite::fromJSON(url, flatten=TRUE)$teams) %>%
+                      unnest(teamStats) %>% 
+                      unnest(splits) %>% drop_na(stat.gamesPlayed)
+  stats2 <- all_stats %>% select(starts_with('stat')) %>%
+                  mutate_if(is.character,as.numeric)
+  stats1 <- all_stats %>% select(!starts_with('stat'))
+  total_stats <- tibble(cbind(stats1, stats2))
+  return (total_stats)
 }
+
+
 
 ```
 
@@ -170,15 +180,15 @@ This wrapper function allows the user to query any of the functions through this
 get_nhl_data <- function(stat_type, id=NULL) {
   if (stat_type == 'Franchises') {
     return(get_franchises())
-  } else if (stat_type == 'Franchise Totals') {
+  } else if (stat_type == 'Totals') {
     return(get_franchise_team_totals())
-  } else if (stat_type == 'Franchise Records') {
+  } else if (stat_type == 'Records') {
     return(get_franchise_season_records(id))
-  } else if (stat_type == 'Franchise Goalie Records') {
+  } else if (stat_type == 'Goalies') {
     return(get_franchise_goalie_records(id))
-  } else if (stat_type == 'Franchise Skater Records') {
+  } else if (stat_type == 'Skaters') {
     return(get_franchise_skater_records(id))
-  } else if (stat_type == 'Franchise Details') {
+  } else if (stat_type == 'Details') {
     return(get_franchise_details(id))
   } else if (stat_type == 'Team Stats') {
     return(get_team_stats(id))
@@ -207,11 +217,47 @@ extract_year <- function(data) {
 
 
 ## Summarizing
+### Contingency Tables
+Let's look at skaters and goalies. I am grabbing all here, but you can pass a franchise ID or team abbreviation as well to get skaters from specific franchises. I wanted to look at the skaters' stats by win/loss, but that metric is not readily available, so instead the tables will be based on position.
+
+Luckily, goalies do have a win/loss stat, so they were further categorized as "winners" and "losers" (harsh I know). In both cases, we only looked at players who had 50 or more games played.
+```{r contingency_stats}
+skaters <- get_nhl_data('Skaters') %>% 
+              filter(gamesPlayed >= 50) %>%
+              group_by(positionCode) %>%
+              summarise(Goals = sum(goals),
+                        Assists = sum(assists),
+                        Points = sum(points),
+                        PenaltyMinutes = sum(penaltyMinutes))
+goalies <- get_nhl_data('Goalies') %>% drop_na(mostSavesOneGame,
+                                                mostShotsAgainstOneGame) %>%
+              filter(gamesPlayed >= 50) %>%
+              mutate(player_type = if_else(wins >= losses
+                                           , 'Winner', 'Loser')) %>%
+              group_by(player_type) %>%
+              summarise(MostGoals = mean(mostGoalsAgainstOneGame),
+                        MostSaves = mean(mostSavesOneGame),
+                        MostShots = mean(mostShotsAgainstOneGame),
+                        MostShutouts = mean(mostShutoutsOneSeason),
+                        mostWins = mean(mostWinsOneSeason))
+
+
+
+
+
+```
+The summary of skaters data was mostly unsurprising. Centers scored the most goals, with wings being behind them. I suppose for someone like me who is not an expert in hockey, it is surprising to see that defensive players tended to score more points overall due to more assists than wings. And of course, the penalty minutes for defensive players is laughably higher than the other positions.
+`r kable(skaters)`
+
+With goalies, unfortunately this data set does not have total goals, shots, etc, but rather most in a game. I think it would be easier to spot patterns with those types of averages, but with 'most in a game', the summaries are much closer. Perhaps the one summary statistic that still translates is the 'Most Shutouts in a Season' statistic. In this case, it is intuitive that goalies who win more would have more shutouts.
+`r kable(goalies)`
+
+
 ### Playoff Win % by Team Age
 Here we are looking at the age of the team vs their playoff win percentage. 
 ```{r summarizing_playoffs}
 #let's look at all franchises via franchise totals
-data <- get_nhl_data('Franchise Totals')
+data <- get_nhl_data('Totals')
 data$first_season <- extract_year(data$firstSeasonId)
 data$team_age <- 2021 - data$first_season
 
@@ -242,8 +288,10 @@ g
 
 ```
 
-### Regular Season % and Playoff %
+### Regular Season % and Playoff % 
 This chunk compares team's regular season win percentages to their playoff percentages. There are quantiles provided for the regular season percentage, and the playoff win percentage was grouped into three categories. 
+
+Interestingly, there are no teams that historically do not perform well in the regular season that perform above average in the playoffs. However, there are two teams that perform above average it the regular season that perform below average in the playoffs (the Wild and the Predators).
 ```{r clutch_teams}
 playoff_quantiles <- quantile(franchises$win_pct_playoff, 
                                c(0.25, 0.75), na.rm=TRUE)
@@ -263,8 +311,64 @@ ggplot(data=franchises, aes(x=teamName, y=win_pct_regular)) +
   theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
   geom_hline(aes(yintercept = regular_quantiles[1])) +
   geom_hline(aes(yintercept = regular_quantiles[2])) +
-  xlab('') + ylab('Regular Season Win %')
+  xlab('') + ylab('Regular Season Win %') +
+  guides(fill=guide_legend(title="Playoff Clutch Rating"))
 
 ```
 
+### Analyzing Wins 
 
+Looking at overall team stats, again we break apart by "winners" and "losers" to summarize the data.
+```{r overall_stats}
+all_stats <- get_nhl_data('Team Stats') %>%
+                mutate(team_type = if_else(stat.wins >= stat.losses, 
+                                           'Winners', 'Losers'))
+```
+
+#### Box plots
+
+```{r box_plots}
+p1 <- ggplot(all_stats, aes(x=team_type, 
+                           y=stat.goalsPerGame,
+                           fill=team_type)) +
+      geom_boxplot() + geom_jitter(width=0.1,alpha=0.2) +
+      guides(fill=guide_legend(title="")) +
+      ggtitle('Average # of Goals Scored') +
+      xlab('') + ylab('Goals Scored')
+
+p2 <- ggplot(all_stats, aes(x=team_type, 
+                           y=stat.goalsAgainstPerGame,
+                           fill=team_type)) +
+      geom_boxplot() + geom_jitter(width=0.1,alpha=0.2) +
+      guides(fill=guide_legend(title="")) +
+      ggtitle('Average # of Goals Conceded') +
+      xlab('') + ylab('Goals Conceded')
+
+```
+
+Though I expected there to be a difference to be winning and losing teams, the difference is quite stark. Neither boxplot really intersects the other for goals given up or scored.
+```{r} 
+grid.arrange(p1, p2, ncol=2)
+```
+
+#### Histograms
+Here we will do a histogram of goals given up by goalies, with a density for each player type (winner or loser).
+```{r stat_hists}
+goalies <- get_nhl_data('Goalies') %>% drop_na(mostSavesOneGame,
+                                                mostShotsAgainstOneGame) %>%
+              filter(gamesPlayed >= 50) %>%
+              mutate(player_type = if_else(wins >= losses
+                                           , 'Winner', 'Loser'))
+
+p <- ggplot(data=goalies, aes(x=mostGoalsAgainstOneGame)) +
+        geom_histogram(aes(y=..density..), bins=10) +
+        geom_density(aes(color=player_type), kernel='gaussian', size=2) +
+        guides(fill=guide_legend(title="Player Type")) +
+        ggtitle('Most Goals Against in a Game (By Player Type)') +
+        guides(fill=guide_legend(title="Player Type")) +
+        xlab('') + ylab('')
+```
+As we can see, most goalies have a worst game of around 6-7 goals. And this is true for both "winner" and "loser" goalies - though by adding the kernel over top, we can see that the winner goalies kernel is slighly more right skewed and more centered on the 6-7 range. 
+```{r} 
+grid.arrange(p)
+```
