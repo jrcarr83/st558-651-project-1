@@ -364,7 +364,7 @@ goalies <- get_nhl_data('Goalies') %>% drop_na(mostSavesOneGame,
 p <- ggplot(data=goalies, aes(x=mostGoalsAgainstOneGame)) +
         geom_histogram(aes(y=..density..), bins=10) +
         geom_density(aes(color=player_type), kernel='gaussian', size=2) +
-        guides(fill=guide_legend(title="Player Type")) +
+        guides(color=guide_legend(title="Player Type")) +
         ggtitle('Most Goals Against in a Game (By Player Type)') +
         guides(fill=guide_legend(title="Player Type")) +
         xlab('') + ylab('')
