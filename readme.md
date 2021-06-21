@@ -1,6 +1,7 @@
 ST558-651 Project 1
 ================
 
+-   [Packages](#packages)
 -   [Set Up Data Scrape](#set-up-data-scrape)
     -   [Base links](#base-links)
     -   [Get List of Teams](#get-list-of-teams)
@@ -12,9 +13,15 @@ ST558-651 Project 1
     -   [Misc Functions](#misc-functions)
 -   [Summarizing](#summarizing)
     -   [Contingency Tables](#contingency-tables)
+    -   [Numerical Summaries](#numerical-summaries)
     -   [Playoff Win % by Team Age](#playoff-win--by-team-age)
     -   [Regular Season % and Playoff %](#regular-season--and-playoff-)
     -   [Analyzing Wins](#analyzing-wins)
+
+## Packages
+
+This program requires only four packages to run: \* jsonlite \*
+tidyverse \* knitr \* gridExtra
 
 ## Set Up Data Scrape
 
@@ -248,10 +255,10 @@ only looked at players who had 50 or more games played.
 skaters <- get_nhl_data('Skaters') %>% 
               filter(gamesPlayed >= 50) %>%
               group_by(positionCode) %>%
-              summarise(Goals = sum(goals),
-                        Assists = sum(assists),
-                        Points = sum(points),
-                        PenaltyMinutes = sum(penaltyMinutes))
+              summarise(Goals = mean(goals),
+                        Assists = mean(assists),
+                        Points = mean(points),
+                        PenaltyMinutes = mean(penaltyMinutes))
 goalies <- get_nhl_data('Goalies') %>% drop_na(mostSavesOneGame,
                                                 mostShotsAgainstOneGame) %>%
               filter(gamesPlayed >= 50) %>%
@@ -266,18 +273,16 @@ goalies <- get_nhl_data('Goalies') %>% drop_na(mostSavesOneGame,
 ```
 
 The summary of skaters data was mostly unsurprising. Centers scored the
-most goals, with wings being behind them. I suppose for someone like me
-who is not an expert in hockey, it is surprising to see that defensive
-players tended to score more points overall due to more assists than
-wings. And of course, the penalty minutes for defensive players is
-laughably higher than the other positions.
+most goals, with wings being behind them. The penalty minutes for
+defensive players is laughably higher than the other positions, and
+right wings tend to score more points than left wings.
 
-| positionCode |  Goals | Assists | Points | PenaltyMinutes |
-|:-------------|-------:|--------:|-------:|---------------:|
-| C            | 113915 |  175892 | 289807 |         290619 |
-| D            |  48024 |  159077 | 207101 |         607656 |
-| L            |  86892 |  106939 | 193831 |         336769 |
-| R            |  94441 |  114930 | 209371 |         326713 |
+| positionCode |    Goals |  Assists |    Points | PenaltyMinutes |
+|:-------------|---------:|---------:|----------:|---------------:|
+| C            | 50.69648 | 78.27859 | 128.97508 |       129.3364 |
+| D            | 15.88621 | 52.62223 |  68.50844 |       201.0109 |
+| L            | 45.35073 | 55.81367 | 101.16441 |       175.7667 |
+| R            | 52.43809 | 63.81455 | 116.25264 |       181.4064 |
 
 With goalies, unfortunately this data set does not have total goals,
 shots, etc, but rather most in a game. I think it would be easier to
@@ -291,6 +296,61 @@ shutouts.
 |:-------------|----------:|----------:|----------:|-------------:|---------:|
 | Loser        |  8.000000 |  46.18994 |  49.94972 |     2.731844 | 17.98324 |
 | Winner       |  7.194444 |  45.26190 |  48.28175 |     4.682540 | 28.20238 |
+
+### Numerical Summaries
+
+``` r
+#lets look at numerical summaries of points by position
+skaters <- get_nhl_data('Skaters') %>% 
+              filter(gamesPlayed >= 50) %>%
+              group_by(positionCode) %>%
+              summarise(min = min(points),
+                        q25 = quantile(points, 0.25),
+                        mean = mean(points),
+                        median = median(points),
+                        q75 = quantile(points, 0.75),
+                        max = max(points))
+
+#let's do the same for goalies that win/lose with shutouts
+goalies <- get_nhl_data('Goalies') %>% drop_na(mostSavesOneGame,
+                                                mostShotsAgainstOneGame) %>%
+              filter(gamesPlayed >= 50) %>%
+              mutate(player_type = if_else(wins >= losses
+                                           , 'Winner', 'Loser')) %>%
+              group_by(player_type) %>%
+              summarise(min = min(mostShutoutsOneSeason),
+                        q25 = quantile(mostShutoutsOneSeason, 0.25),
+                        mean = mean(mostShutoutsOneSeason),
+                        median = median(mostShutoutsOneSeason),
+                        q75 = quantile(mostShutoutsOneSeason, 0.75),
+                        max = max(mostShutoutsOneSeason))
+```
+
+The skaters summaries helped me catch an error I was going to make when
+looking at the contengency tables created above. I actually started by
+summing the variables instead of looking at means, and because there are
+two defensive players for every wing, I nearly made the statement that
+defense players get more assists/points than wings. Looking at the
+numerical summary below, it is easy to see that is not correct:
+
+| positionCode | min | q25 |  mean | median |   q75 |  max |
+|:-------------|----:|----:|------:|-------:|------:|-----:|
+| C            |   1 |  29 | 129.0 |     58 | 146.0 | 1755 |
+| D            |   0 |  17 |  68.5 |     35 |  77.0 | 1506 |
+| L            |   0 |  23 | 101.2 |     51 | 122.2 | 1339 |
+| R            |   1 |  26 | 116.3 |     56 | 134.0 | 1809 |
+
+And looking at goalies, goalies with historically winning records
+clearly have a distribution offset far to the right of those without a
+winning record. At almost every quantile location, and at the mean,
+winning goalies outpace most shutouts in a season by at least 2 games.
+
+| positionCode | min | q25 |  mean | median |   q75 |  max |
+|:-------------|----:|----:|------:|-------:|------:|-----:|
+| C            |   1 |  29 | 129.0 |     58 | 146.0 | 1755 |
+| D            |   0 |  17 |  68.5 |     35 |  77.0 | 1506 |
+| L            |   0 |  23 | 101.2 |     51 | 122.2 | 1339 |
+| R            |   1 |  26 | 116.3 |     56 | 134.0 | 1809 |
 
 ### Playoff Win % by Team Age
 
